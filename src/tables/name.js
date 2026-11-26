@@ -14,7 +14,10 @@ let NameRecord = new r.Struct({
     ),
     {
       type: 'parent',
-      relativeTo: (ctx) => ctx.parent.stringOffset,
+      // on decode, ctx is the record struct whose parent is the name table;
+      // on encode, ctx is a record value built by preEncode below, which
+      // carries the table's stringOffset on itself
+      relativeTo: (ctx) => (ctx.parent ? ctx.parent : ctx).stringOffset,
       allowNull: false,
     },
   ),
@@ -134,28 +137,33 @@ NameTable.preEncode = function () {
     let val = this.records[key];
     if (key === 'fontFeatures') continue;
 
+    let nameID = NAMES.indexOf(key);
+    if (nameID === -1) {
+      // keep records with numeric name ids, skip anything unknown
+      if (!/^\d+$/.test(key)) continue;
+      nameID = Number(key);
+    }
+
+    let string = val.en != null ? val.en : val[Object.keys(val)[0]];
+    if (typeof string !== 'string') continue;
+
     records.push({
       platformID: 3,
       encodingID: 1,
       languageID: 0x409,
-      nameID: NAMES.indexOf(key),
-      length: val.en.length * 2,
-      string: val.en,
+      nameID,
+      length: string.length * 2,
+      string,
     });
-
-    if (key === 'postscriptName') {
-      records.push({
-        platformID: 1,
-        encodingID: 0,
-        languageID: 0,
-        nameID: NAMES.indexOf(key),
-        length: val.en.length,
-        string: val.en,
-      });
-    }
   }
 
   this.records = records;
   this.count = records.length;
   this.stringOffset = NameTable.size(this, null, false);
+
+  // the string pointers of the records are relative to this offset,
+  // see the relativeTo getter of the name record struct
+  for (let record of records) {
+    record.stringOffset = this.stringOffset;
+  }
 };

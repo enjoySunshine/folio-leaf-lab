@@ -1,6 +1,7 @@
 import Subset from './Subset';
 import Directory from '../tables/directory';
 import TTFGlyphEncoder from '../glyph/TTFGlyphEncoder';
+import { encodeCmap } from './cmap';
 
 export default class TTFSubset extends Subset {
   constructor(font) {
@@ -55,7 +56,7 @@ export default class TTFSubset extends Subset {
     //   head, hhea, loca, maxp, cvt , prep, glyf, hmtx, fpgm
     //
     // additional tables required for standalone fonts:
-    //   name, cmap, OS/2, post
+    //   cmap, name, OS/2, post
 
     this.glyf = [];
     this.offset = 0;
@@ -88,31 +89,43 @@ export default class TTFSubset extends Subset {
     let hhea = { ...this.font.hhea };
     hhea.numberOfMetrics = this.hmtx.metrics.length;
 
-    // map = []
-    // for index in [0...256]
-    //     if index < @numGlyphs
-    //         map[index] = index
-    //     else
-    //         map[index] = 0
-    //
-    // cmapTable =
-    //     version: 0
-    //     length: 262
-    //     language: 0
-    //     codeMap: map
-    //
-    // cmap =
-    //     version: 0
-    //     numSubtables: 1
-    //     tables: [
-    //         platformID: 1
-    //         encodingID: 0
-    //         table: cmapTable
-    //     ]
+    // map the included characters to their glyphs, so the subset
+    // can be opened and used as a standalone font
+    let cmap = encodeCmap(this.cmap);
+
+    let name = this.font.name ? { ...this.font.name } : undefined;
+
+    let os2 = this.font['OS/2'] ? { ...this.font['OS/2'] } : undefined;
+    if (os2) {
+      // clamp the encoded character range to the subset
+      let codePoints = Object.keys(this.cmap).map(Number);
+      os2.usFirstCharIndex = codePoints.length
+        ? Math.min(Math.min(...codePoints), 0xffff)
+        : 0;
+      os2.usLastCharIndex = codePoints.length
+        ? Math.min(Math.max(...codePoints), 0xffff)
+        : 0;
+    }
+
+    // a post table without glyph names
+    let post = this.font.post
+      ? {
+          version: 3,
+          italicAngle: this.font.post.italicAngle,
+          underlinePosition: this.font.post.underlinePosition,
+          underlineThickness: this.font.post.underlineThickness,
+          isFixedPitch: this.font.post.isFixedPitch,
+          minMemType42: 0,
+          maxMemType42: 0,
+          minMemType1: 0,
+          maxMemType1: 0,
+        }
+      : undefined;
 
     // TODO: subset prep, cvt, fpgm?
     return Directory.toBuffer({
       tables: {
+        cmap,
         head,
         hhea,
         loca: this.loca,
@@ -122,11 +135,9 @@ export default class TTFSubset extends Subset {
         glyf: this.glyf,
         hmtx: this.hmtx,
         fpgm: this.font.fpgm,
-
-        // name: clone @font.name
-        // 'OS/2': clone @font['OS/2']
-        // post: clone @font.post
-        // cmap: cmap
+        name,
+        'OS/2': os2,
+        post,
       },
     });
   }

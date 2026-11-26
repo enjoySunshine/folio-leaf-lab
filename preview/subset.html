@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Open Sans subset: A é</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2em; color: #222; }
+  h1 { font-size: 18px; }
+  .native { font-size: 96px; margin: 0.2em 0; }
+  canvas { border: 1px solid #ccc; background: #fafafa; }
+  pre { background: #f4f4f4; padding: 1em; overflow: auto; }
+  .err { color: #b00; }
+</style>
+</head>
+<body>
+<h1>Open Sans subset — A é（同一字体文件，两种画法）</h1>
+
+<p>1) 浏览器原生排版（FontFace API 注册 OpenSans-A-eacute.subset.ttf）：</p>
+<p class="native" id="native">Aé</p>
+
+<p>2) canvas 按字符取路径绘制（fontkit 解析同一文件，glyphsForString('Aé')）：</p>
+<canvas id="canvas" width="560" height="320"></canvas>
+
+<pre id="log">loading…</pre>
+<p class="err" id="err"></p>
+
+<script type="module">
+import * as fontkit from '../dist/browser/index.js';
+
+const log = (s) => (document.getElementById('log').textContent += s + '\n');
+document.getElementById('log').textContent = '';
+
+try {
+  const res = await fetch('./OpenSans-A-eacute.subset.ttf');
+  if (!res.ok) throw new Error('fetch failed: ' + res.status);
+  const bytes = await res.arrayBuffer();
+
+  // 1) native rendering through the browser's own font stack
+  const face = new FontFace('SubsetSans', bytes);
+  await face.load();
+  document.fonts.add(face);
+  document.getElementById('native').style.fontFamily = 'SubsetSans';
+
+  // 2) draw the outlines fontkit extracts per character
+  const font = fontkit.create(new Uint8Array(bytes));
+  const glyphs = font.glyphsForString('Aé');
+
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const scale = 180 / font.unitsPerEm;
+  const baseline = 240;
+  let x = 40;
+
+  for (const glyph of glyphs) {
+    // advance width guide
+    ctx.strokeStyle = '#ddd';
+    ctx.strokeRect(x, 40, glyph.advanceWidth * scale, 220);
+
+    // the same path object the terminal prints
+    ctx.save();
+    ctx.translate(x, baseline);
+    ctx.scale(scale, -scale);
+    ctx.beginPath();
+    glyph.path.toFunction()(ctx);
+    ctx.fillStyle = '#222';
+    ctx.fill();
+    ctx.restore();
+
+    x += glyph.advanceWidth * scale + 40;
+  }
+
+  // baseline
+  ctx.strokeStyle = '#c00';
+  ctx.beginPath();
+  ctx.moveTo(0, baseline);
+  ctx.lineTo(canvas.width, baseline);
+  ctx.stroke();
+
+  log('subset bytes: ' + bytes.byteLength);
+  for (const [i, ch] of ['A', 'é'].entries()) {
+    const g = glyphs[i];
+    const svg = g.path.toSVG();
+    log(`'${ch}' -> gid ${g.id}, advanceWidth ${g.advanceWidth}, ` +
+        `path ${svg.length} chars, starts ${JSON.stringify(svg.slice(0, 15))}`);
+  }
+  log(`'B' -> gid ${font.glyphsForString('B')[0].id} (.notdef)`);
+} catch (e) {
+  document.getElementById('err').textContent =
+    e.message + ' — 需要通过 HTTP 打开，例如： npx serve preview';
+}
+</script>
+</body>
+</html>

@@ -73,6 +73,117 @@ describe('font subsetting', function () {
       );
     });
 
+    describe('standalone subsets', function () {
+      let buf;
+      before(function () {
+        let subset = font.createSubset();
+        for (let glyph of font.glyphsForString('Aé')) {
+          subset.includeGlyph(glyph);
+        }
+
+        buf = subset.encode();
+      });
+
+      it('should include the tables of a standalone font', function () {
+        let f = fontkit.create(buf);
+        for (let tag of ['cmap', 'name', 'OS/2', 'post']) {
+          assert.ok(f.directory.tables[tag], `missing ${tag} table`);
+        }
+      });
+
+      it('should map characters to their glyphs', function () {
+        let f = fontkit.create(buf);
+        assert.deepEqual(f.characterSet, [65, 233]);
+
+        let A = f.glyphsForString('A')[0];
+        assert.equal(A.id, 1);
+        assert.equal(A.advanceWidth, 1296);
+        assert.equal(A.path.toSVG(), font.glyphsForString('A')[0].path.toSVG());
+        assert.equal(A.path.toSVG().length, 121);
+        assert.ok(A.path.toSVG().startsWith('M1120 0L938 465'));
+
+        let e = f.glyphsForString('é')[0];
+        assert.equal(e.id, 2);
+        assert.equal(e.advanceWidth, 1149);
+        assert.equal(e.path.toSVG(), font.glyphsForString('é')[0].path.toSVG());
+        assert.equal(e.path.toSVG().length, 420);
+        assert.ok(e.path.toSVG().startsWith('M639 -20'));
+      });
+
+      it('should map other characters to the missing glyph', function () {
+        let f = fontkit.create(buf);
+        assert.equal(f.glyphsForString('B')[0].id, 0);
+        assert.equal(f.glyphsForString('e')[0].id, 0);
+        assert.ok(!f.hasGlyphForCodePoint(66));
+
+        let A = f.glyphsForString('A')[0];
+        let e = f.glyphsForString('é')[0];
+        assert.notEqual(A.id, 0);
+        assert.notEqual(e.id, 0);
+        assert.notEqual(A.path.toSVG(), f.getGlyph(0).path.toSVG());
+        assert.notEqual(e.path.toSVG(), f.getGlyph(0).path.toSVG());
+      });
+
+      it('should expose font wide metrics', function () {
+        let f = fontkit.create(buf);
+        assert.equal(f.underlinePosition, font.underlinePosition);
+        assert.equal(f.underlineThickness, font.underlineThickness);
+        assert.equal(f.unitsPerEm, font.unitsPerEm);
+        assert.equal(f.fullName, font.fullName);
+      });
+
+      it('should write valid table checksums', function () {
+        let view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+        let checkSum = (offset, length) => {
+          let sum = 0;
+          for (let i = 0; i < length; i += 4) {
+            let value = 0;
+            for (let j = 0; j < 4 && i + j < length; j++) {
+              value = value * 256 + buf[offset + i + j];
+            }
+
+            sum = (sum + value) >>> 0;
+          }
+
+          return sum;
+        };
+
+        let numTables = view.getUint16(4);
+        let headOffset = null;
+        for (let i = 0; i < numTables; i++) {
+          let entry = 12 + i * 16;
+          let tag = String.fromCharCode(
+            buf[entry],
+            buf[entry + 1],
+            buf[entry + 2],
+            buf[entry + 3],
+          );
+          let offset = view.getUint32(entry + 8);
+          let length = view.getUint32(entry + 12);
+
+          // table data is aligned to 4 byte boundaries
+          assert.equal(offset % 4, 0, `${tag} is not aligned`);
+
+          // the head checksum is calculated with checkSumAdjustment set to 0
+          let adjustment = 0;
+          if (tag === 'head') {
+            headOffset = offset;
+            adjustment = view.getUint32(offset + 8);
+          }
+
+          assert.equal(
+            (view.getUint32(entry + 4) + adjustment) >>> 0,
+            checkSum(offset, length),
+            `invalid checksum for ${tag}`,
+          );
+        }
+
+        // the checksum of the whole font, including checkSumAdjustment
+        assert.equal(checkSum(0, buf.length), 0xb1b0afba);
+        assert.notEqual(headOffset, null);
+      });
+    });
+
     it('should handle fonts with long index to location format (indexToLocFormat = 1)', function () {
       let font = fontkit.openSync(
         new URL('data/FiraSans/FiraSans-Regular.ttf', import.meta.url),

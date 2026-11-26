@@ -79,15 +79,7 @@ export function getEncodingMapping(encoding) {
 // Map of platform ids to encoding ids.
 export const ENCODINGS = [
   // unicode
-  [
-    'utf-16be',
-    'utf-16be',
-    'utf-16be',
-    'utf-16be',
-    'utf-16be',
-    'utf-16be',
-    'utf-16be',
-  ],
+  ['utf16be', 'utf16be', 'utf16be', 'utf16be', 'utf16be', 'utf16be', 'utf16be'],
 
   // macintosh
   // Mappings available at http://unicode.org/Public/MAPPINGS/VENDORS/APPLE/
@@ -150,8 +142,8 @@ export const ENCODINGS = [
   // Docs here: http://msdn.microsoft.com/en-us/library/system.text.encoding(v=vs.110).aspx
   [
     // Symbol fonts also store their names in UTF-16BE
-    'utf-16be',
-    'utf-16be',
+    'utf16be',
+    'utf16be',
     'shift-jis',
     'gb18030',
     'big5',
@@ -160,7 +152,7 @@ export const ENCODINGS = [
     null,
     null,
     null,
-    'utf-16be',
+    'utf16be',
   ],
 ];
 
